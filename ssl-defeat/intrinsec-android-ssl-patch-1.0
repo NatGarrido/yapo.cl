@@ -1,0 +1,94 @@
+#!/usr/bin/env python
+#
+# Copyright (c) 2011 by Intrinsec
+# http://www.intrinsec.com
+#
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy
+# of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
+#
+# Please visit http://securite.intrinsec.com/fr/blog/ for more informations or
+# if want to post comments.
+#
+
+import os
+import sys
+import shutil
+import errno
+import distutils.dir_util
+import re
+
+
+apktool  = "./apktool.jar"
+smalidir = "./smali/"
+
+def usage():
+    print "usage : ./ssl-patch <apk file>"
+
+def escape_dollar(string):
+    print '\033[93m --> Calling function --> ', '\033[92m escape_dollar() \033[0m'
+    print '\033[93m param --> [', string ,'] \033[0m'
+    print '\033[93m result --> [', (re.sub('\$','\\$',string)) ,'] \033[0m'
+    return(re.sub('\$','\\$',string))
+
+
+if (len(sys.argv) != 2):
+    usage()
+    exit()
+
+
+apk = sys.argv[1]
+
+
+outdir = "./cl.yapo-1"
+zipdir = "./" + apk + "-zip"
+
+
+print "\033[92m Decompression of " + apk + " done. \033[0m"
+
+os.system("java -jar " + apktool + " d " + apk)
+print "\033[92m Decompilation of " + apk + " done. \033[0m"
+
+
+try:
+    os.makedirs(outdir + "/smali/com/android")
+except OSError as exc:
+    if exc.errno == errno.EEXIST:
+        pass
+    else: raise
+
+# sed -i '/Version/s/3\.1\.0\.2-1/3.1.0.2/' <files>
+print "Patching smali files..."
+for (path, dirs, files) in os.walk(outdir + "/smali/"):
+    for smalifile in files:
+        filename, ext = os.path.splitext(smalifile)
+        if ext == ".smali":
+            os.system("sed -i 's/org\/apache\/http\/impl\/client\/DefaultHttpClient/com\/android\/MyHttpClient/g' " + escape_dollar(os.path.join(path, smalifile)))
+            os.system("sed -i 's/check-cast v\([0-9]\+\), Ljavax\/net\/ssl\/HttpsURLConnection;/invoke-static \{\}, Lcom\/android\/httpsurlbypass;->trustAllHosts()V\\n    &/g' " + escape_dollar(os.path.join(path, smalifile)))
+            os.system("sed -i 's/check-cast v\([0-9]\+\), Ljavax\/net\/ssl\/HttpsURLConnection;/&\\n    invoke-static \{v\\1\}, Lcom\/android\/bypass;->httpsurlconnectionbypass(Ljavax\/net\/ssl\/HttpsURLConnection;)V/g' " + escape_dollar(os.path.join(path, smalifile)))
+            os.system("sed -i 's/invoke-virtual {v\([0-9]\+\), v1}, Landroid\/webkit\/WebView;->loadUrl(Ljava\/lang\/String;)V/invoke-static \{v\\1\}, Lcom\/android\/bypass1;->webviewbypass(Landroid\/webkit\/WebView;)V\\n    &/g' " + escape_dollar(os.path.join(path, smalifile)))
+
+print "All files patched."
+
+
+smalilist = os.listdir(smalidir)
+
+for smalifile in smalilist:
+    shutil.copy(smalidir + smalifile, outdir + "/smali/com/android/")
+
+print "\033[92m Smali code included. \033[0m"
+
+
+apkname, ext = os.path.splitext(apk)
+newapk = apkname + "-new" + ext
+os.system("java -jar " + apktool + " b " + outdir)
+print "\033[92m Recompilation of " + newapk + " done. \033[0m"
